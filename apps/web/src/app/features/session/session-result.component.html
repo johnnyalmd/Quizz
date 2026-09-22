@@ -1,0 +1,66 @@
+<h1 class="h3 mb-3">Resumo da sessão</h1>
+
+@if (error) {
+  <div class="alert alert-danger">{{ error }}</div>
+}
+
+@if (!result) {
+  <div class="alert alert-warning">
+    Nenhum resultado recente.
+    <a routerLink="/">Voltar às aulas</a>
+  </div>
+} @else {
+  <div class="alert alert-primary">
+    Você acertou <strong>{{ result.score }}</strong> de <strong>{{ result.total }}</strong>
+    @if (result.total) {
+      ({{ (result.score / result.total) * 100 | number:'1.0-0' }}%).
+    }
+  </div>
+
+  <div class="row g-3 mb-4">
+    @for (phase of result.phase_scores; track phase.phase) {
+      <div class="col-md-4">
+        <div class="card">
+          <div class="card-body">
+            <h2 class="h6">Fase {{ phase.phase }} · {{ phase.kind }}</h2>
+            <p class="mb-0 fs-4">{{ phase.score }}/{{ phase.total }}</p>
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+
+  <h2 class="h5">O que estudar para fixar</h2>
+  <ul class="list-group mb-4">
+    @for (item of result.study_plan; track item.topic) {
+      <li class="list-group-item">
+        <strong>{{ item.topic }}</strong>
+        @if (item.missed) {
+          <span class="badge text-bg-warning ms-2">{{ item.missed }} erro(s)</span>
+        }
+        <p class="mb-0 mt-1">{{ item.advice }}</p>
+      </li>
+    }
+  </ul>
+
+  @for (item of result.results; track item.question_id) {
+    <div class="card mb-2" [class.border-success]="item.is_correct" [class.border-danger]="!item.is_correct">
+      <div class="card-body">
+        <p class="mb-1"><span class="badge text-bg-light">Fase {{ item.phase }}</span> {{ item.prompt }}</p>
+        @if (item.timed_out) {
+          <p class="text-danger small mb-1">Tempo esgotado.</p>
+        }
+        @if (item.explanation) {
+          <p class="mb-0 small"><strong>Explicação:</strong> {{ item.explanation }}</p>
+        }
+      </div>
+    </div>
+  }
+
+  <div class="d-flex gap-2 mt-3">
+    <button class="btn btn-primary" type="button" (click)="retry()" [disabled]="retrying">
+      {{ retrying ? 'Preparando...' : 'Retentar (outras perguntas)' }}
+    </button>
+    <a class="btn btn-outline-secondary" [routerLink]="['/aulas', result.lesson]">Voltar à aula</a>
+  </div>
+}

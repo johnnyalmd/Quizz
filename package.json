@@ -1,0 +1,12 @@
+{
+  "name": "estudo-quiz",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "packages/contracts"
+  ],
+  "scripts": {
+    "dev:web": "npm run start -w @estudo-quiz/web",
+    "build:web": "npm run build -w @estudo-quiz/web"
+  }
+}

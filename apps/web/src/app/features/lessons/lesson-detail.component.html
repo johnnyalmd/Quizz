@@ -1,0 +1,68 @@
+<div class="mb-3">
+  <a routerLink="/" class="small">&larr; Voltar para aulas</a>
+</div>
+
+@if (error) {
+  <div class="alert alert-danger">{{ error }}</div>
+}
+
+@if (loading) {
+  <p class="text-muted">Carregando aula...</p>
+} @else if (lesson) {
+  <div class="d-flex justify-content-between align-items-start mb-3 gap-3 flex-wrap">
+    <div>
+      <h1 class="h3 mb-1">{{ lesson.title }}</h1>
+      <p class="text-muted mb-0">Atualizada em {{ lesson.updated_at | date:'short' }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <a class="btn btn-outline-secondary" [routerLink]="['/aulas', lesson.id, 'editar']">Editar</a>
+      <button class="btn btn-outline-primary" type="button" (click)="generateBank()" [disabled]="generating">
+        {{ generating ? 'Gerando banco...' : 'Gerar banco (IA)' }}
+      </button>
+      <button
+        class="btn btn-primary"
+        type="button"
+        (click)="startSession()"
+        [disabled]="starting || lesson.latest_bank?.status !== 'ready'"
+      >
+        {{ starting ? 'Abrindo...' : 'Iniciar sessão' }}
+      </button>
+    </div>
+  </div>
+
+  @if (generateError) {
+    <div class="alert alert-warning">{{ generateError }}</div>
+  }
+
+  @if (generating) {
+    <div class="alert alert-info">A IA está montando 8 MCQ + 8 lacunas + 8 cenários. Pode levar um pouco.</div>
+  }
+
+  @if (lesson.latest_bank?.status === 'ready') {
+    <div class="alert alert-success">
+      Banco pronto:
+      {{ lesson.latest_bank!.counts.mcq }} MCQ,
+      {{ lesson.latest_bank!.counts.cloze }} lacunas,
+      {{ lesson.latest_bank!.counts.scenario }} cenários.
+    </div>
+  }
+
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header">Conteúdo da aula</div>
+        <div class="card-body">
+          <pre class="mb-0 study-pre">{{ lesson.class_content }}</pre>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header">O que eu aprendi</div>
+        <div class="card-body">
+          <pre class="mb-0 study-pre">{{ lesson.learned_notes }}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+}

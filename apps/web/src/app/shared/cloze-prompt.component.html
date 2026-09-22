@@ -1,0 +1,15 @@
+<p class="fs-5 mb-3">
+  @for (part of parts; track $index; let last = $last) {
+    <span>{{ part }}</span>
+    @if (!last) {
+      <button class="btn btn-sm btn-outline-primary mx-1" type="button" (click)="clearBlank($index)">
+        {{ values[$index] || '___' }}
+      </button>
+    }
+  }
+</p>
+<div class="d-flex flex-wrap gap-2">
+  @for (chip of remainingChips; track $index) {
+    <button class="btn btn-outline-secondary btn-sm" type="button" (click)="fill(chip)">{{ chip }}</button>
+  }
+</div>

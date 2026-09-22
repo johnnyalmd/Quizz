@@ -1,0 +1,69 @@
+@if (session) {
+  <div class="mb-3">
+    <a class="small" [routerLink]="['/aulas', session.lesson]">&larr; Voltar para a aula</a>
+  </div>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="h4 mb-0">{{ session.lesson_title }}</h1>
+      <p class="text-muted mb-0">{{ progressLabel }}</p>
+    </div>
+    @if (phase?.time_limit_seconds) {
+      <app-timer [seconds]="phase!.time_limit_seconds!" [resetKey]="timerKey" (expired)="onExpired()" />
+    }
+  </div>
+}
+
+@if (error) {
+  <div class="alert alert-danger">{{ error }}</div>
+}
+
+@if (loading) {
+  <p class="text-muted">Carregando sessão...</p>
+} @else if (question && phase) {
+  <div class="card">
+    <div class="card-body">
+      @if (phase.kind === 'mcq') {
+        <h2 class="h5 mb-3">{{ question.prompt }}</h2>
+        @for (option of question.options; track $index; let optIndex = $index) {
+          <div class="form-check">
+            <input
+              class="form-check-input"
+              type="radio"
+              [name]="'q' + question.id"
+              [id]="'opt' + optIndex"
+              [value]="optIndex"
+              [(ngModel)]="selectedIndex"
+            />
+            <label class="form-check-label" [for]="'opt' + optIndex">{{ option }}</label>
+          </div>
+        }
+      }
+
+      @if (phase.kind === 'cloze') {
+        <p class="text-muted small">Complete a frase com as opções. Toque numa lacuna para desfazer.</p>
+        <app-cloze-prompt [question]="question" [values]="clozeValues" (valuesChange)="onClozeChange($event)" />
+      }
+
+      @if (phase.kind === 'scenario') {
+        <div class="alert alert-secondary">{{ question.prompt }}</div>
+        @for (option of question.options; track $index; let optIndex = $index) {
+          <div class="form-check">
+            <input
+              class="form-check-input"
+              type="radio"
+              [name]="'s' + question.id"
+              [id]="'sopt' + optIndex"
+              [value]="optIndex"
+              [(ngModel)]="selectedIndex"
+            />
+            <label class="form-check-label" [for]="'sopt' + optIndex">{{ option }}</label>
+          </div>
+        }
+      }
+    </div>
+  </div>
+
+  <button class="btn btn-primary mt-3" type="button" (click)="next()" [disabled]="submitting">
+    {{ submitting ? 'Enviando...' : 'Continuar' }}
+  </button>
+}

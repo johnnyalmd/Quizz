@@ -1,0 +1,35 @@
+<div class="mb-3">
+  <a routerLink="/" class="small">&larr; Voltar para aulas</a>
+</div>
+
+<h1 class="h3 mb-3">{{ isEdit ? 'Editar aula' : 'Nova aula' }}</h1>
+
+@if (error) {
+  <div class="alert alert-danger">{{ error }}</div>
+}
+
+@if (loading) {
+  <p class="text-muted">Carregando...</p>
+} @else {
+  <form [formGroup]="form" (ngSubmit)="save()" class="card card-body">
+    <div class="mb-3">
+      <label class="form-label" for="title">Título</label>
+      <input id="title" class="form-control" formControlName="title" placeholder="Ex.: Aula 3 — HTTP e REST" />
+    </div>
+    <div class="mb-3">
+      <label class="form-label" for="class_content">Conteúdo da aula</label>
+      <textarea id="class_content" class="form-control" rows="8" formControlName="class_content"></textarea>
+    </div>
+    <div class="mb-3">
+      <label class="form-label" for="learned_notes">O que eu aprendi</label>
+      <textarea id="learned_notes" class="form-control" rows="8" formControlName="learned_notes"></textarea>
+      <div class="form-text">A IA mistura este campo com o conteúdo da aula para montar o banco.</div>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-primary" type="submit" [disabled]="saving">
+        {{ saving ? 'Salvando...' : 'Salvar' }}
+      </button>
+      <a class="btn btn-outline-secondary" routerLink="/">Cancelar</a>
+    </div>
+  </form>
+}

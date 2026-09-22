@@ -1,0 +1,8 @@
+body {
+  background: #f6f7fb;
+}
+
+.study-pre {
+  white-space: pre-wrap;
+  font-family: inherit;
+}
