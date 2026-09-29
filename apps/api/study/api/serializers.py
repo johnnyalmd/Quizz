@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from study.domain.models import Attempt, Lesson, Question, Quiz
+from study.services.attempts import best_attempt_for_lesson
 
 
 class LatestBankSerializer(serializers.ModelSerializer):
@@ -19,8 +20,15 @@ class LatestBankSerializer(serializers.ModelSerializer):
         }
 
 
+class BestAttemptSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Attempt
+        fields = ["id", "score", "total", "completed_at"]
+
+
 class LessonSerializer(serializers.ModelSerializer):
     latest_bank = serializers.SerializerMethodField()
+    best_attempt = serializers.SerializerMethodField()
 
     class Meta:
         model = Lesson
@@ -32,8 +40,9 @@ class LessonSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "latest_bank",
+            "best_attempt",
         ]
-        read_only_fields = ["id", "created_at", "updated_at", "latest_bank"]
+        read_only_fields = ["id", "created_at", "updated_at", "latest_bank", "best_attempt"]
 
     def get_latest_bank(self, obj: Lesson):
         quizzes = getattr(obj, "_prefetched_objects_cache", {}).get("quizzes")
@@ -41,6 +50,12 @@ class LessonSerializer(serializers.ModelSerializer):
         if quiz is None:
             return None
         return LatestBankSerializer(quiz).data
+
+    def get_best_attempt(self, obj: Lesson):
+        attempt = best_attempt_for_lesson(obj)
+        if attempt is None:
+            return None
+        return BestAttemptSerializer(attempt).data
 
 
 class SessionQuestionSerializer(serializers.ModelSerializer):

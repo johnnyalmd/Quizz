@@ -6,6 +6,8 @@
     "packages/contracts"
   ],
   "scripts": {
+    "api": "node -e \"require('child_process').spawnSync(require('path').join('.venv','Scripts','python.exe'), ['apps/api/manage.py','runserver'], {stdio:'inherit'})\"",
+    "web": "npm run start -w @estudo-quiz/web",
     "dev:web": "npm run start -w @estudo-quiz/web",
     "build:web": "npm run build -w @estudo-quiz/web"
   }

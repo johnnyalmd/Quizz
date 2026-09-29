@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { SessionAnswer, SessionPhase, SessionQuestion, StudySession } from '@estudo-quiz/contracts';
+import { PhasePreview, SessionAnswer, SessionPhase, SessionQuestion, StudySession } from '@estudo-quiz/contracts';
 import { TimerComponent } from '../../shared/timer.component';
 import { ClozePromptComponent } from '../../shared/cloze-prompt.component';
 import { SessionService } from './session.service';
@@ -15,13 +15,16 @@ export class SessionRunnerComponent implements OnInit {
   session: StudySession | null = null;
   loading = true;
   submitting = false;
+  scoringPhase = false;
   error = '';
   phaseIndex = 0;
   questionIndex = 0;
   selectedIndex: number | null = null;
   clozeValues: string[] = [];
+  mcqSelections: Record<number, number | string | null> = {};
   answers = new Map<number, SessionAnswer>();
   timerKey = 0;
+  checkpoint: PhasePreview | null = null;
 
   constructor(
     private route: ActivatedRoute,
@@ -52,9 +55,23 @@ export class SessionRunnerComponent implements OnInit {
     return this.phase?.questions[this.questionIndex] ?? null;
   }
 
+  get isMcqPhase(): boolean {
+    return this.phase?.kind === 'mcq';
+  }
+
+  get isLastPhase(): boolean {
+    return !!this.session && this.phaseIndex + 1 >= this.session.phases.length;
+  }
+
   get progressLabel(): string {
     if (!this.phase) {
       return '';
+    }
+    if (this.checkpoint) {
+      return `Fase ${this.phase.phase}/3 concluída`;
+    }
+    if (this.phase.kind === 'mcq') {
+      return `Fase ${this.phase.phase}/3 · ${this.phase.questions.length} questões`;
     }
     return `Fase ${this.phase.phase}/3 · questão ${this.questionIndex + 1}/${this.phase.questions.length}`;
   }
@@ -71,10 +88,66 @@ export class SessionRunnerComponent implements OnInit {
     this.advance(false);
   }
 
+  keepPhaseScore(): void {
+    if (!this.session) {
+      return;
+    }
+    this.checkpoint = null;
+    if (this.phaseIndex + 1 < this.session.phases.length) {
+      this.phaseIndex += 1;
+      this.questionIndex = 0;
+      this.prepareCurrent();
+      return;
+    }
+    this.submit();
+  }
+
+  restartPhase(): void {
+    if (!this.phase) {
+      return;
+    }
+    for (const question of this.phase.questions) {
+      this.answers.delete(question.id);
+    }
+    this.checkpoint = null;
+    this.error = '';
+    this.questionIndex = 0;
+    this.prepareCurrent();
+  }
+
   private prepareCurrent(): void {
     this.selectedIndex = null;
     this.clozeValues = [];
     this.timerKey += 1;
+    if (this.phase?.kind === 'mcq') {
+      this.mcqSelections = {};
+      for (const question of this.phase.questions) {
+        this.mcqSelections[question.id] = null;
+      }
+    }
+  }
+
+  private storeMcqPhase(): boolean {
+    if (!this.phase) {
+      return false;
+    }
+    const missing = this.phase.questions.some(
+      (question) => this.mcqSelections[question.id] === null || this.mcqSelections[question.id] === undefined,
+    );
+    if (missing) {
+      this.error = 'Responda todas as questões da fase 1 antes de continuar.';
+      return false;
+    }
+    this.error = '';
+    for (const question of this.phase.questions) {
+      this.answers.set(question.id, {
+        question_id: question.id,
+        selected_index: Number(this.mcqSelections[question.id]),
+        selected_values: [],
+        timed_out: false,
+      });
+    }
+    return true;
   }
 
   private store(timedOut: boolean): void {
@@ -91,7 +164,14 @@ export class SessionRunnerComponent implements OnInit {
   }
 
   private advance(timedOut: boolean): void {
-    if (!this.session || !this.phase) {
+    if (!this.session || !this.phase || this.checkpoint || this.scoringPhase) {
+      return;
+    }
+    if (this.phase.kind === 'mcq') {
+      if (!this.storeMcqPhase()) {
+        return;
+      }
+      this.scoreCurrentPhase();
       return;
     }
     this.store(timedOut);
@@ -100,13 +180,31 @@ export class SessionRunnerComponent implements OnInit {
       this.prepareCurrent();
       return;
     }
-    if (this.phaseIndex + 1 < this.session.phases.length) {
-      this.phaseIndex += 1;
-      this.questionIndex = 0;
-      this.prepareCurrent();
+    this.scoreCurrentPhase();
+  }
+
+  private scoreCurrentPhase(): void {
+    if (!this.session || !this.phase) {
       return;
     }
-    this.submit();
+    const answers = this.phase.questions
+      .map((question) => this.answers.get(question.id))
+      .filter((item): item is SessionAnswer => Boolean(item));
+    if (answers.length !== this.phase.questions.length) {
+      this.error = 'Não foi possível pontuar esta fase.';
+      return;
+    }
+    this.scoringPhase = true;
+    this.sessionService.preview(this.session.id, answers).subscribe({
+      next: (preview) => {
+        this.checkpoint = preview;
+        this.scoringPhase = false;
+      },
+      error: () => {
+        this.error = 'Não foi possível pontuar esta fase.';
+        this.scoringPhase = false;
+      },
+    });
   }
 
   private submit(): void {

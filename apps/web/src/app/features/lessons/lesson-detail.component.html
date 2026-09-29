@@ -13,6 +13,14 @@
     <div>
       <h1 class="h3 mb-1">{{ lesson.title }}</h1>
       <p class="text-muted mb-0">Atualizada em {{ lesson.updated_at | date:'short' }}</p>
+      @if (lesson.best_attempt) {
+        <p class="mb-0 mt-2">
+          Melhor pontuação:
+          <a class="fw-semibold" [routerLink]="['/sessoes', lesson.best_attempt.id, 'resultado']">
+            {{ lesson.best_attempt.score }}/{{ lesson.best_attempt.total }}
+          </a>
+        </p>
+      }
     </div>
     <div class="d-flex gap-2 flex-wrap">
       <a class="btn btn-outline-secondary" [routerLink]="['/aulas', lesson.id, 'editar']">Editar</a>

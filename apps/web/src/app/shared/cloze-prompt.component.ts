@@ -15,19 +15,15 @@ export class ClozePromptComponent {
   }
 
   get remainingChips(): string[] {
-    const used = [...this.values];
-    return this.question.options.filter((option) => {
-      const index = used.indexOf(option);
-      if (index === -1) {
-        return true;
-      }
-      used.splice(index, 1);
-      return false;
-    });
+    return this.question.options;
+  }
+
+  isUsed(option: string): boolean {
+    return this.values.includes(option);
   }
 
   fill(option: string): void {
-    if (this.values.length >= this.question.blank_count) {
+    if (this.values.includes(option) || this.values.length >= this.question.blank_count) {
       return;
     }
     this.valuesChange.emit([...this.values, option]);

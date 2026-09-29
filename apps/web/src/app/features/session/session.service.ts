@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { SessionAnswer, SessionResult, StudySession } from '@estudo-quiz/contracts';
+import { PhasePreview, SessionAnswer, SessionResult, StudySession } from '@estudo-quiz/contracts';
 import { API_URL } from '../../core/api';
 
 @Injectable({ providedIn: 'root' })
@@ -18,7 +18,15 @@ export class SessionService {
     return this.http.get<StudySession>(`${API_URL}/sessions/${id}/`);
   }
 
+  preview(id: number, answers: SessionAnswer[]): Observable<PhasePreview> {
+    return this.http.post<PhasePreview>(`${API_URL}/sessions/${id}/preview/`, { answers });
+  }
+
   submit(id: number, answers: SessionAnswer[]): Observable<SessionResult> {
     return this.http.post<SessionResult>(`${API_URL}/sessions/${id}/answers/`, { answers });
+  }
+
+  getResult(id: number): Observable<SessionResult> {
+    return this.http.get<SessionResult>(`${API_URL}/sessions/${id}/result/`);
   }
 }

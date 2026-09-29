@@ -1,26 +1,38 @@
 # Estudo Quiz
 
-Sessão de estudo em 3 fases: MCQ, lacunas com timer e cenários. Angular + Vite no front, Django em camadas no back.
+Sessão de estudo em 3 fases: MCQ, lacunas com timer e cenários. Angular + Vite no front, Django no back.
 
-Guia: [docs/GUIA.md](docs/GUIA.md).
+Guia completo: [docs/GUIA.md](docs/GUIA.md).
 
-## Como iniciar
+## Subir local (mínimo)
 
-API:
+Na raiz `C:\Users\Pichau\estudo-quiz`.
 
-```powershell
-cd C:\Users\Pichau\estudo-quiz
-.\.venv\Scripts\python.exe apps\api\manage.py migrate
-.\.venv\Scripts\python.exe apps\api\manage.py runserver
-```
-
-Web (Vite via Angular, porta 5173):
+### Primeira vez
 
 ```powershell
-cd C:\Users\Pichau\estudo-quiz
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r apps\api\requirements.txt
+copy apps\api\.env.example apps\api\.env
 npm install
-npm run dev:web
+.\.venv\Scripts\python.exe apps\api\manage.py migrate
 ```
 
-- Interface: http://localhost:5173
-- API: http://localhost:8000/api/
+Coloque o token do Hugging Face em `apps\api\.env`:
+
+```
+HF_TOKEN=hf_...
+```
+
+### Todo dia (2 terminais)
+
+```powershell
+npm run api
+```
+
+```powershell
+npm run web
+```
+
+- Front: http://localhost:5173
+- API: http://localhost:8000

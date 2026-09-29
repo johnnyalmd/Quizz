@@ -4,16 +4,23 @@
   <div class="alert alert-danger">{{ error }}</div>
 }
 
-@if (!result) {
+@if (loading) {
+  <p class="text-muted">Carregando resultado...</p>
+} @else if (!result) {
   <div class="alert alert-warning">
-    Nenhum resultado recente.
+    Nenhum resultado encontrado.
     <a routerLink="/">Voltar às aulas</a>
   </div>
 } @else {
-  <div class="alert alert-primary">
-    Você acertou <strong>{{ result.score }}</strong> de <strong>{{ result.total }}</strong>
-    @if (result.total) {
-      ({{ (result.score / result.total) * 100 | number:'1.0-0' }}%).
+  <div class="alert alert-primary d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span>
+      Você acertou <strong>{{ result.score }}</strong> de <strong>{{ result.total }}</strong>
+      @if (result.total) {
+        ({{ (result.score / result.total) * 100 | number:'1.0-0' }}%).
+      }
+    </span>
+    @if (result.is_best) {
+      <span class="badge text-bg-success">Melhor tentativa desta aula</span>
     }
   </div>
 
@@ -43,10 +50,17 @@
     }
   </ul>
 
+  <h2 class="h5">Respostas corrigidas</h2>
   @for (item of result.results; track item.question_id) {
     <div class="card mb-2" [class.border-success]="item.is_correct" [class.border-danger]="!item.is_correct">
       <div class="card-body">
         <p class="mb-1"><span class="badge text-bg-light">Fase {{ item.phase }}</span> {{ item.prompt }}</p>
+        <p class="mb-1 small">
+          <strong>Sua resposta:</strong> {{ userAnswer(item) }}
+        </p>
+        <p class="mb-1 small">
+          <strong>Resposta correta:</strong> {{ correctAnswer(item) }}
+        </p>
         @if (item.timed_out) {
           <p class="text-danger small mb-1">Tempo esgotado.</p>
         }

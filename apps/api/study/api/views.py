@@ -7,6 +7,7 @@ from rest_framework.response import Response
 
 from study.api.serializers import LessonSerializer, SessionQuestionSerializer, SessionSubmitSerializer
 from study.domain.models import Attempt, Lesson, Question, Quiz
+from study.services.attempts import result_payload
 from study.services.quiz_generator import QuizGenerationError, generate_bank
 from study.services.recommendations import build_study_plan
 from study.services.sampling import last_attempt_question_ids, sample_question_ids
@@ -112,6 +113,49 @@ class SessionViewSet(viewsets.GenericViewSet):
         return Response(_session_payload(attempt))
 
     @action(detail=True, methods=["post"])
+    def preview(self, request, pk=None):
+        attempt = self.get_object()
+        if attempt.status != Attempt.Status.IN_PROGRESS:
+            return Response(
+                {"detail": "Esta sessão já foi concluída."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = SessionSubmitSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        submitted = {item["question_id"]: item for item in serializer.validated_data["answers"]}
+        questions = {
+            question.id: question
+            for question in Question.objects.filter(id__in=attempt.question_ids)
+        }
+        if any(qid not in questions for qid in submitted):
+            return Response(
+                {"detail": "Há respostas que não pertencem a esta sessão."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        kinds = {questions[qid].kind for qid in submitted}
+        if len(kinds) != 1:
+            return Response(
+                {"detail": "Envie só as respostas de uma fase."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        kind = next(iter(kinds))
+        phase_ids = [qid for qid in attempt.question_ids if questions[qid].kind == kind]
+        if set(submitted) != set(phase_ids):
+            return Response(
+                {"detail": "Envie todas as respostas da fase."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        results = [score_answer(questions[qid], submitted[qid]) for qid in phase_ids]
+        return Response(
+            {
+                "phase": KIND_PHASE[kind],
+                "kind": kind,
+                "score": sum(1 for item in results if item["is_correct"]),
+                "total": len(results),
+            }
+        )
+
+    @action(detail=True, methods=["post"])
     def answers(self, request, pk=None):
         attempt = self.get_object()
         if attempt.status != Attempt.Status.IN_PROGRESS:
@@ -139,22 +183,21 @@ class SessionViewSet(viewsets.GenericViewSet):
         plan = build_study_plan(results)
         attempt.answers = serializer.validated_data["answers"]
         attempt.score = score
+        attempt.total = total
         attempt.phase_scores = scores
         attempt.study_plan = plan
+        attempt.results = results
         attempt.status = Attempt.Status.COMPLETED
         attempt.completed_at = timezone.now()
         attempt.save()
-        return Response(
-            {
-                "id": attempt.id,
-                "lesson": attempt.quiz.lesson_id,
-                "status": attempt.status,
-                "score": score,
-                "total": total,
-                "phase_scores": scores,
-                "study_plan": plan,
-                "results": results,
-                "created_at": attempt.created_at,
-            },
-            status=status.HTTP_201_CREATED,
-        )
+        return Response(result_payload(attempt), status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"])
+    def result(self, request, pk=None):
+        attempt = self.get_object()
+        if attempt.status != Attempt.Status.COMPLETED:
+            return Response(
+                {"detail": "Esta sessão ainda não foi concluída."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(result_payload(attempt))

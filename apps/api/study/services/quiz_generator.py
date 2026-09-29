@@ -10,29 +10,40 @@ from study.domain.models import Question
 BANK_PER_KIND = 8
 
 SHARED_CONTEXT = """Você gera itens de estudo em português do Brasil.
-Misture o que o aluno anotou (prioridade) com o conteúdo da aula (contexto).
-Cada item precisa de um "topic" curto (1–3 palavras) para o plano de revisão.
+Use SOMENTE fatos que aparecem no conteúdo da aula ou nas anotações do aluno.
+Não invente termos, APIs, datas ou conceitos que não estejam nesse material.
+Cada item precisa de um "topic" curto (1–3 palavras) tirado do material.
 Responda APENAS com JSON válido, sem markdown."""
 
-MCQ_PROMPT = """Gere exatamente {count} questões de múltipla escolha.
+MCQ_PROMPT = """Gere exatamente {count} questões de múltipla escolha sobre o material.
+Regras:
+- O enunciado e as 4 opções devem ser texto visível e completo (nunca só A/B/C/D).
+- Tem que existir UMA opção realmente correta, que responde ao enunciado.
+- Se a pergunta pede a diferença entre dois conceitos, a correta deve dizer essa diferença.
+  Não inverta definições. Não use uma característica comum (ex.: os dois usam cobre/fibra) como se fosse a diferença.
+- A resposta correta OBRIGATORIAMENTE aparece em options, no índice correct_index.
+- As 3 erradas são do mesmo assunto, mas estão erradas.
+- correct_index é inteiro 0–3 e options[correct_index] é a resposta certa.
 Formato:
 {{
   "questions": [
     {{
-      "prompt": "enunciado",
-      "options": ["A", "B", "C", "D"],
+      "prompt": "enunciado baseado no material",
+      "options": ["resposta A", "resposta B", "resposta C", "resposta D"],
       "correct_index": 0,
+      "correct_answer": "resposta A",
       "topic": "HTTP",
-      "explanation": "por que a correta está certa"
+      "explanation": "por que a correta está certa, usando o material"
     }}
   ]
-}}
-correct_index é inteiro 0–3. Sempre 4 alternativas plausíveis."""
+}}"""
 
-CLOZE_PROMPT = """Gere exatamente {count} frases com lacunas para completar.
-Use exatamente 1 ou 2 ocorrências de ___ no prompt.
-"options" tem 4 chips (respostas corretas + distratores).
-"correct_values" é a lista das palavras que preenchem as lacunas, na ordem.
+CLOZE_PROMPT = """Gere exatamente {count} frases com lacunas para completar, só com o material.
+Regras:
+- Use exatamente 1 ou 2 ocorrências de ___ no prompt.
+- "options" tem 4 chips visíveis: as respostas corretas e distratores do mesmo assunto.
+- "correct_values" preenche as lacunas na ordem e CADA valor deve ser igual a um item de options.
+- Não use opções vazias nem letras soltas (A/B/C/D).
 Formato:
 {{
   "questions": [
@@ -44,12 +55,13 @@ Formato:
       "explanation": "por que essas palavras completam a frase"
     }}
   ]
-}}
-Toda entrada de correct_values deve aparecer em options."""
+}}"""
 
-SCENARIO_PROMPT = """Gere exatamente {count} cenários curtos.
-"prompt" é uma mensagem/situação para o aluno.
-Ofereça 4 opções e uma correta.
+SCENARIO_PROMPT = """Gere exatamente {count} cenários curtos baseados só no material.
+Regras:
+- "prompt" é uma mensagem/situação clara.
+- As 4 opções são respostas visíveis e completas.
+- A correta está em options[correct_index] e também em correct_answer, com o mesmo texto.
 Formato:
 {{
   "questions": [
@@ -57,6 +69,7 @@ Formato:
       "prompt": "Você precisa buscar um recurso sem alterar estado. O que usa?",
       "options": ["GET", "POST", "PATCH", "DELETE"],
       "correct_index": 0,
+      "correct_answer": "GET",
       "topic": "HTTP",
       "explanation": "GET não altera estado"
     }}
@@ -102,24 +115,91 @@ def _questions_list(payload: dict | list) -> list:
     return questions
 
 
+def _clean_options(options, index: int, label: str) -> list[str]:
+    if not isinstance(options, list) or len(options) != 4:
+        raise QuizGenerationError(f"{label} {index + 1} precisa de 4 alternativas visíveis.")
+    cleaned = [str(option).strip() for option in options]
+    if any(not option for option in cleaned):
+        raise QuizGenerationError(f"{label} {index + 1} tem opção vazia.")
+    if len(set(item.lower() for item in cleaned)) < 4:
+        raise QuizGenerationError(f"{label} {index + 1} tem opções repetidas.")
+    letters_only = all(option.upper() in {"A", "B", "C", "D"} and len(option) == 1 for option in cleaned)
+    if letters_only:
+        raise QuizGenerationError(
+            f"{label} {index + 1} precisa de respostas em texto, não só letras A–D."
+        )
+    return cleaned
+
+
+def _match_option(value: str, options: list[str]) -> str | None:
+    needle = str(value).strip().lower()
+    for option in options:
+        if option.lower() == needle:
+            return option
+    return None
+
+
+def _resolve_correct_index(item: dict, options: list[str], index: int, label: str) -> int:
+    answer = item.get("correct_answer")
+    if answer:
+        matched = _match_option(str(answer), options)
+        if matched is None:
+            raise QuizGenerationError(
+                f"{label} {index + 1}: a resposta correta não está nas opções visíveis."
+            )
+        return next(i for i, option in enumerate(options) if option.lower() == matched.lower())
+
+    raw_index = item.get("correct_index")
+    try:
+        correct_index = int(raw_index)
+    except (TypeError, ValueError) as exc:
+        raise QuizGenerationError(f"{label} {index + 1} com correct_index inválido.") from exc
+    if not 0 <= correct_index <= 3:
+        raise QuizGenerationError(f"{label} {index + 1} com correct_index fora de 0–3.")
+    return correct_index
+
+
+def _assert_mcq_has_real_answer(prompt: str, options: list[str], correct_index: int, index: int) -> None:
+    text = prompt.lower()
+    correct = options[correct_index].lower()
+    inverted = (
+        "lan cobre área ampla",
+        "lan cobre uma área ampla",
+        "wan cobre área local",
+        "wan cobre uma área local",
+        "lan cobre area ampla",
+        "wan cobre area local",
+    )
+    if any(phrase in correct for phrase in inverted):
+        raise QuizGenerationError(
+            f"MCQ {index + 1}: a opção marcada como certa inverte o conceito e está errada."
+        )
+
+    asks_difference = "diferença" in text or "diferenca" in text
+    if not asks_difference:
+        return
+
+    media_hints = ("cobre", "fibra", "sem fio", "wireless", "transmissões", "transmissoes")
+    contrast_hints = ("local", "ampla", "geográfica", "geografica", "curta", "longa", "maior", "menor")
+    media_hits = sum(1 for hint in media_hints if hint in correct)
+    contrast_hits = sum(1 for hint in contrast_hints if hint in correct)
+    if media_hits >= 2 and contrast_hits == 0:
+        raise QuizGenerationError(
+            f"MCQ {index + 1}: a opção marcada como certa não descreve a diferença pedida no enunciado."
+        )
+
+
 def parse_mcq(raw: str) -> list[dict]:
     cleaned = []
     for index, item in enumerate(_questions_list(_extract_json(raw))):
         prompt = str(item.get("prompt") or "").strip()
-        options = item.get("options")
         explanation = str(item.get("explanation") or "").strip()
         topic = str(item.get("topic") or "").strip()[:80]
         if not prompt:
             raise QuizGenerationError(f"MCQ {index + 1} sem enunciado.")
-        if not isinstance(options, list) or len(options) != 4:
-            raise QuizGenerationError(f"MCQ {index + 1} precisa de 4 alternativas.")
-        options = [str(option).strip() for option in options]
-        try:
-            correct_index = int(item.get("correct_index"))
-        except (TypeError, ValueError) as exc:
-            raise QuizGenerationError(f"MCQ {index + 1} com correct_index inválido.") from exc
-        if not 0 <= correct_index <= 3:
-            raise QuizGenerationError(f"MCQ {index + 1} com correct_index fora de 0–3.")
+        options = _clean_options(item.get("options"), index, "MCQ")
+        correct_index = _resolve_correct_index(item, options, index, "MCQ")
+        _assert_mcq_has_real_answer(prompt, options, correct_index, index)
         cleaned.append(
             {
                 "kind": Question.Kind.MCQ,
@@ -139,24 +219,26 @@ def parse_cloze(raw: str) -> list[dict]:
     cleaned = []
     for index, item in enumerate(_questions_list(_extract_json(raw))):
         prompt = str(item.get("prompt") or "").strip()
-        options = item.get("options")
         values = item.get("correct_values")
         explanation = str(item.get("explanation") or "").strip()
         topic = str(item.get("topic") or "").strip()[:80]
         blanks = prompt.count("___")
         if blanks not in (1, 2):
             raise QuizGenerationError(f"Lacuna {index + 1} precisa de 1 ou 2 ocorrências de ___.")
-        if not isinstance(options, list) or len(options) != 4:
-            raise QuizGenerationError(f"Lacuna {index + 1} precisa de 4 opções.")
+        options = _clean_options(item.get("options"), index, "Lacuna")
         if not isinstance(values, list) or len(values) != blanks:
             raise QuizGenerationError(
                 f"Lacuna {index + 1}: correct_values deve ter {blanks} item(ns)."
             )
-        options = [str(option).strip() for option in options]
-        values = [str(value).strip() for value in values]
-        option_lower = {option.lower() for option in options}
-        if any(value.lower() not in option_lower for value in values):
-            raise QuizGenerationError(f"Lacuna {index + 1}: resposta ausente nas opções.")
+        aligned = []
+        for value in values:
+            matched = _match_option(str(value), options)
+            if matched is None:
+                raise QuizGenerationError(
+                    f"Lacuna {index + 1}: a resposta '{value}' não está nas opções visíveis."
+                )
+            aligned.append(matched)
+        values = aligned
         cleaned.append(
             {
                 "kind": Question.Kind.CLOZE,
@@ -176,20 +258,12 @@ def parse_scenario(raw: str) -> list[dict]:
     cleaned = []
     for index, item in enumerate(_questions_list(_extract_json(raw))):
         prompt = str(item.get("prompt") or "").strip()
-        options = item.get("options")
         explanation = str(item.get("explanation") or "").strip()
         topic = str(item.get("topic") or "").strip()[:80]
         if not prompt:
             raise QuizGenerationError(f"Cenário {index + 1} sem mensagem.")
-        if not isinstance(options, list) or len(options) != 4:
-            raise QuizGenerationError(f"Cenário {index + 1} precisa de 4 alternativas.")
-        options = [str(option).strip() for option in options]
-        try:
-            correct_index = int(item.get("correct_index"))
-        except (TypeError, ValueError) as exc:
-            raise QuizGenerationError(f"Cenário {index + 1} com correct_index inválido.") from exc
-        if not 0 <= correct_index <= 3:
-            raise QuizGenerationError(f"Cenário {index + 1} com correct_index fora de 0–3.")
+        options = _clean_options(item.get("options"), index, "Cenário")
+        correct_index = _resolve_correct_index(item, options, index, "Cenário")
         cleaned.append(
             {
                 "kind": Question.Kind.SCENARIO,
@@ -255,7 +329,13 @@ def generate_bank(class_content: str, learned_notes: str) -> tuple[str, list[dic
         (SCENARIO_PROMPT.format(count=count), parse_scenario),
     ]
     for system, parser in specs:
-        raw = _complete(system, f"{material}\nGere {count} itens.")
+        raw = _complete(
+            system,
+            (
+                f"{material}\nGere {count} itens usando só esse material. "
+                "Toda resposta correta precisa aparecer nas opções."
+            ),
+        )
         combined_raw.append(raw)
         questions.extend(parser(raw))
     return "\n\n---\n\n".join(combined_raw), questions

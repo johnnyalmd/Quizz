@@ -20,6 +20,13 @@ export interface LatestBank {
   };
 }
 
+export interface BestAttempt {
+  id: number;
+  score: number;
+  total: number;
+  completed_at: string | null;
+}
+
 export interface Lesson {
   id: number;
   title: string;
@@ -28,6 +35,7 @@ export interface Lesson {
   created_at: string;
   updated_at: string;
   latest_bank: LatestBank | null;
+  best_attempt: BestAttempt | null;
 }
 
 export interface SessionQuestion {
@@ -89,12 +97,20 @@ export interface PhaseScore {
   total: number;
 }
 
+export interface PhasePreview {
+  phase: number;
+  kind: QuestionKind;
+  score: number;
+  total: number;
+}
+
 export interface SessionResult {
   id: number;
   lesson: number;
   status: SessionStatus;
   score: number;
   total: number;
+  is_best: boolean;
   phase_scores: PhaseScore[];
   study_plan: StudyAdvice[];
   results: ResultItem[];
